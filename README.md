@@ -1,8 +1,7 @@
 # Debate to Priors
 
-Most debates are unproductive not because people argue badly, but because they're arguing about the wrong thing.
 
-Two people debate the ethics of life extension. One cites studies on social inequality, the other cites studies on human flourishing. They go back and forth for an hour and nobody moves. What's actually happening: one person holds an intuition — almost pre-rational — that there is something right about the natural life cycle, that death gives life its shape, that circumventing it violates something sacred. The other holds a different intuition: that life is the supreme value, and more of it is always better. Neither person has stated this. They're both trying to win a factual argument that is actually downstream of a value axiom neither has named.
+Two people debate the ethics of life extension. One cites studies on social inequality, the other cites studies on human flourishing. They go back and forth for an hour and nobody moves. It could be that one person holds an intuition — almost pre-rational — that there is something right about the natural life cycle, that death gives life its shape, that circumventing it violates something sacred. The other holds a different intuition: that life is the supreme value, and more of it is always better. Neither person has stated this. They're both trying to win a factual argument that is actually downstream of a value axiom neither has named.
 
 This is the problem Debate to Priors is built to solve.
 
@@ -12,31 +11,16 @@ This is the problem Debate to Priors is built to solve.
 
 Every argument has two layers:
 
-**The surface layer** — the claims, evidence, and logic each person actually says out loud. This is where most debate happens.
+**The surface layer** — the claims, evidence, and logic that acts on the priors.
 
-**The prior layer** — the implicit probability assignments and value weights that make the surface arguments feel obvious or wrong to each person. This is where most disagreements actually live.
+**The prior layer** — the implicit probability assignments and value weights that make the surface arguments feel obvious or wrong to each person. This is where some disagreemens live.
 
 When two people share the same priors, they will usually reach the same conclusions given the same evidence. When they diverge, no amount of evidence-trading will close the gap — because each side is filtering evidence through different priors and arriving at the same positions they started with.
 
-The tool does one thing: it lifts the debate off the surface layer and shows you the prior layer. It extracts the implicit confidence each person assigns to shared claims, surfaces the magnitude of the gap, classifies whether the disagreement is empirical (a factual dispute that evidence could resolve) or normative (a value dispute that evidence cannot resolve), and then — crucially — proposes the minimum belief updates each party would need to make for consensus to be reachable.
+This tool lifts the debate off the surface layer and shows you the prior layer. It extracts the implicit confidence each person assigns to shared claims, surfaces the magnitude of the gap, classifies whether the disagreement is empirical (a factual dispute that evidence could resolve) or normative (a value dispute that evidence cannot resolve), and then — crucially — proposes the minimum belief updates each party would need to make for consensus to be reachable.
 
 ---
 
-## Why this is hard to replicate by just asking an LLM
-
-The obvious objection: can't you just drop two arguments into ChatGPT and ask "what's the fundamental disagreement here?"
-
-You can. You'll get a reasonable summary. But that's not the same thing, for a few reasons:
-
-**Summaries describe. This maps.** A summary tells you what each person thinks. A prior map tells you *where the gap is* and *how large it is* — not in words, but as a structured, comparable object. The gap between "Person A assigns 20% confidence to this claim and Person B assigns 85%" is quantitatively different from "they disagree on this." The magnitude matters. A 65-point prior gap on an empirical claim is a resolvable disagreement — point them at the evidence. A 30-point gap on a normative claim is not resolvable by evidence — naming that is itself the useful output.
-
-**It separates empirical from normative.** This distinction is philosophically load-bearing. Empirical disagreements have in-principle resolutions: better data, better studies, clearer definitions. Normative disagreements don't — they're about values, and values aren't true or false. If you're in an immortality debate and the model tells you "your core gap is on the normative claim that natural death has intrinsic value," you now know you're not in a factual argument. That realization changes everything about how the conversation should proceed.
-
-**It names blind spots — the claims neither person made.** Some of the most important premises in an argument are the ones nobody states because both parties assume them — or assume the other person doesn't hold them. Surfacing these is often the most valuable part of the analysis.
-
-**It suggests resolution paths.** Not "here's who's right," but "here's the minimum update each party would need to make, and here's the evidence or argument that could justify it." The tool doesn't adjudicate. It maps the territory and shows where the road could be built.
-
----
 
 ## The moat
 
@@ -63,7 +47,7 @@ The long-term version of this sits inside every negotiation, every policy debate
 | `debate_to_priors_ollama.html` | Runs locally against any Ollama model. No API key needed. Set your Ollama URL and model in the config bar. Requires Ollama running with CORS enabled: `OLLAMA_ORIGINS=* ollama serve` |
 | `debate_to_priors_anthropic.html` | Runs against the Anthropic API. Paste your API key into the config bar. Uses Claude Sonnet by default; Haiku and Opus also selectable. |
 
-Both files are single HTML files — no build step, no dependencies, open in a browser.
+
 
 ---
 
