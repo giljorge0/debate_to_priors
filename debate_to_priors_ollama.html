@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Debate to Priors</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #f9f8f6;
+  --bg-card: #ffffff;
+  --bg-secondary: #f1f0ed;
+  --text-primary: #1a1a18;
+  --text-secondary: #6b6b67;
+  --text-muted: #9e9e99;
+  --border: rgba(0,0,0,0.08);
+  --border-strong: rgba(0,0,0,0.16);
+  --purple-50: #EEEDFE; --purple-600: #534AB7;
+  --teal-50: #E1F5EE;   --teal-600: #0F6E56;
+  --coral-50: #FAECE7;  --coral-600: #993C1D;
+  --amber-50: #FAEEDA;  --amber-600: #854F0B;
+  --green-50: #E8F5E9;  --green-600: #2E7D32;
+  --blue-50: #E3F2FD;   --blue-600: #1565C0;
+  --gray-50: #F1EFE8;   --gray-600: #5F5E5A;
+  --r-sm: 6px; --r-md: 10px; --r-lg: 14px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1a18; --bg-card: #222220; --bg-secondary: #2c2c2a;
+    --text-primary: #f0efe9; --text-secondary: #b4b2a9; --text-muted: #6b6b67;
+    --border: rgba(255,255,255,0.08); --border-strong: rgba(255,255,255,0.16);
+    --purple-50: #26215C; --purple-600: #AFA9EC;
+    --teal-50: #04342C;   --teal-600: #5DCAA5;
+    --coral-50: #4A1B0C;  --coral-600: #F0997B;
+    --amber-50: #412402;  --amber-600: #EF9F27;
+    --green-50: #1B3A1C;  --green-600: #66BB6A;
+    --blue-50: #0D2137;   --blue-600: #64B5F6;
+    --gray-50: #2C2C2A;   --gray-600: #B4B2A9;
+  }
+}
+
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text-primary); min-height: 100vh; line-height: 1.6; }
+
+.app { max-width: 960px; margin: 0 auto; padding: 2.5rem 1.5rem 6rem; }
+
+header { margin-bottom: 1.8rem; }
+header h1 { font-size: 22px; font-weight: 500; letter-spacing: -0.3px; margin-bottom: 5px; }
+header p  { font-size: 14px; color: var(--text-secondary); max-width: 580px; }
+
+/* config */
+.config-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 1.5rem; padding: 10px 14px; background: var(--bg-secondary); border-radius: var(--r-md); flex-wrap: wrap; }
+.config-label { font-size: 12px; color: var(--text-muted); font-weight: 500; white-space: nowrap; }
+.config-input { background: var(--bg-card); border: 0.5px solid var(--border-strong); border-radius: var(--r-sm); padding: 5px 10px; font-size: 13px; color: var(--text-primary); font-family: inherit; outline: none; }
+.config-input:focus { border-color: var(--purple-600); }
+#modelInput { width: 180px; } #urlInput { flex: 1; min-width: 200px; }
+
+/* input grid */
+.input-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 14px; }
+@media (max-width: 620px) { .input-grid { grid-template-columns: 1fr; } }
+.input-block { display: flex; flex-direction: column; gap: 8px; }
+.person-header { display: flex; align-items: center; gap: 8px; }
+.person-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.input-block label { font-size: 12px; font-weight: 500; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.6px; }
+.name-input { background: var(--bg-card); border: 0.5px solid var(--border-strong); border-radius: var(--r-sm); padding: 7px 10px; font-size: 14px; color: var(--text-primary); font-family: inherit; width: 100%; outline: none; }
+.name-input:focus { border-color: var(--purple-600); box-shadow: 0 0 0 3px var(--purple-50); }
+.textarea-wrap { position: relative; }
+textarea { background: var(--bg-card); border: 0.5px solid var(--border); border-radius: var(--r-md); padding: 14px 14px 44px; font-size: 14px; color: var(--text-primary); font-family: inherit; resize: vertical; min-height: 150px; width: 100%; outline: none; line-height: 1.6; transition: border-color 0.15s; }
+textarea:focus { border-color: var(--border-strong); box-shadow: 0 0 0 3px var(--purple-50); }
+textarea::placeholder { color: var(--text-muted); }
+
+/* audio bar */
+.audio-bar { position: absolute; bottom: 0; left: 0; right: 0; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-top: 0.5px solid var(--border); background: var(--bg-secondary); border-radius: 0 0 var(--r-md) var(--r-md); }
+.btn-mic { display: flex; align-items: center; gap: 6px; background: none; border: 0.5px solid var(--border-strong); border-radius: var(--r-sm); padding: 5px 10px; font-size: 12px; font-family: inherit; color: var(--text-secondary); cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+.btn-mic:hover { background: var(--bg-card); }
+.btn-mic.recording { background: var(--coral-50); border-color: var(--coral-600); color: var(--coral-600); }
+.btn-mic.recording .mic-dot { animation: pulse-dot 1s ease-in-out infinite; }
+.mic-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+@keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.7)} }
+.audio-status { font-size: 11px; color: var(--text-muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.btn-audio-clear { background: none; border: none; font-size: 11px; color: var(--text-muted); cursor: pointer; font-family: inherit; padding: 4px; }
+.btn-audio-clear:hover { color: var(--text-secondary); }
+
+/* actions */
+.actions { display: flex; align-items: center; gap: 10px; margin-bottom: 1.5rem; flex-wrap: wrap; }
+.btn-primary { background: var(--text-primary); color: var(--bg); border: none; border-radius: var(--r-sm); padding: 10px 22px; font-size: 14px; font-weight: 500; font-family: inherit; cursor: pointer; transition: opacity 0.15s; }
+.btn-primary:hover { opacity: 0.82; }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-secondary { background: none; border: 0.5px solid var(--border-strong); border-radius: var(--r-sm); padding: 9px 16px; font-size: 13px; color: var(--text-secondary); font-family: inherit; cursor: pointer; transition: background 0.15s; }
+.btn-secondary:hover { background: var(--bg-secondary); }
+.btn-ghost { background: none; border: none; font-size: 13px; color: var(--text-muted); font-family: inherit; cursor: pointer; padding: 9px 4px; margin-left: auto; }
+.btn-ghost:hover { color: var(--text-secondary); }
+
+/* status */
+.status-bar { display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: var(--bg-secondary); border-radius: var(--r-md); font-size: 13px; color: var(--text-secondary); margin-bottom: 1.5rem; }
+.spinner { width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--text-secondary); border-radius: 50%; animation: spin 0.7s linear infinite; flex-shrink: 0; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.error-box { background: var(--coral-50); border: 0.5px solid var(--coral-600); border-radius: var(--r-md); padding: 14px 18px; font-size: 14px; color: var(--coral-600); margin-bottom: 1rem; }
+
+/* ── RESULTS ── */
+.results { display: flex; flex-direction: column; gap: 20px; }
+
+/* value axiom card — the hero section */
+.axiom-card { background: var(--bg-card); border: 1.5px solid var(--purple-600); border-radius: var(--r-lg); overflow: hidden; }
+.axiom-header { display: flex; align-items: center; gap: 10px; padding: 14px 18px; background: var(--purple-50); border-bottom: 0.5px solid var(--border); }
+.axiom-header-title { font-size: 13px; font-weight: 600; color: var(--purple-600); }
+.axiom-header-sub { font-size: 12px; color: var(--text-muted); margin-left: auto; }
+.axiom-body { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+.axiom-person { display: flex; flex-direction: column; gap: 6px; }
+.axiom-person-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
+.axiom-statement { font-size: 15px; color: var(--text-primary); line-height: 1.55; font-style: italic; }
+.axiom-statement strong { font-style: normal; font-weight: 600; }
+.axiom-divider { height: 0.5px; background: var(--border); margin: 4px 0; }
+.axiom-verdict { font-size: 13px; color: var(--text-secondary); line-height: 1.6; padding: 12px 14px; background: var(--bg-secondary); border-radius: var(--r-sm); }
+.axiom-resolvable { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; padding: 3px 9px; border-radius: 20px; margin-bottom: 6px; }
+.resolvable-no  { background: var(--coral-50);  color: var(--coral-600); }
+.resolvable-yes { background: var(--green-50);  color: var(--green-600); }
+.resolvable-partial { background: var(--amber-50); color: var(--amber-600); }
+
+/* premise chain */
+.chain-card { background: var(--bg-card); border: 0.5px solid var(--border); border-radius: var(--r-lg); overflow: hidden; }
+.chain-header { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 0.5px solid var(--border); }
+.chain-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.chain-title { font-size: 13px; font-weight: 500; }
+.chain-sub { font-size: 12px; color: var(--text-muted); margin-left: auto; }
+.chain-body { padding: 14px 18px; display: flex; flex-direction: column; gap: 0; }
+
+.premise-level { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; position: relative; }
+.premise-level-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-muted); padding-left: 14px; margin-bottom: 2px; }
+.premise-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; background: var(--bg-secondary); border-radius: var(--r-sm); }
+.premise-item-text { font-size: 14px; color: var(--text-primary); line-height: 1.5; flex: 1; }
+.premise-bars { display: flex; flex-direction: column; gap: 4px; min-width: 140px; }
+.pbar-line { display: flex; align-items: center; gap: 6px; }
+.pbar-who { font-size: 10px; color: var(--text-muted); min-width: 14px; }
+.pbar-bg { flex: 1; height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+.pbar-fill { height: 100%; border-radius: 2px; }
+.pbar-val { font-size: 10px; color: var(--text-muted); min-width: 26px; text-align: right; }
+.premise-delta { font-size: 11px; font-weight: 500; padding: 2px 7px; border-radius: 3px; white-space: nowrap; flex-shrink: 0; }
+.gap-high { background: var(--coral-50);  color: var(--coral-600); }
+.gap-mid  { background: var(--amber-50);  color: var(--amber-600); }
+.gap-low  { background: var(--teal-50);   color: var(--teal-600);  }
+
+.chain-connector { display: flex; align-items: center; gap: 8px; padding: 0 12px; margin-bottom: 6px; }
+.chain-connector-line { flex: 1; height: 0.5px; background: var(--border); }
+.chain-connector-label { font-size: 10px; color: var(--text-muted); white-space: nowrap; }
+
+/* prior gap section */
+.section-card { background: var(--bg-card); border: 0.5px solid var(--border); border-radius: var(--r-lg); overflow: hidden; }
+.section-header { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 0.5px solid var(--border); }
+.section-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.section-title { font-size: 13px; font-weight: 500; }
+.section-sub { font-size: 12px; color: var(--text-muted); margin-left: auto; }
+.section-body { padding: 6px 0; }
+
+/* gap rows with interactive sliders */
+.gap-row { padding: 14px 18px; border-bottom: 0.5px solid var(--border); display: grid; gap: 10px; }
+.gap-row:last-child { border-bottom: none; }
+.gap-row-top { display: flex; align-items: flex-start; gap: 10px; }
+.gap-claim { font-size: 14px; color: var(--text-primary); line-height: 1.5; flex: 1; }
+.gap-type-pill { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 20px; white-space: nowrap; flex-shrink: 0; margin-top: 2px; }
+.pill-empirical  { background: var(--teal-50);   color: var(--teal-600);   }
+.pill-normative  { background: var(--purple-50);  color: var(--purple-600); }
+.gap-bars { display: flex; flex-direction: column; gap: 8px; }
+.gap-bar-line { display: flex; align-items: center; gap: 8px; }
+.gap-person-label { font-size: 11px; color: var(--text-secondary); min-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gap-slider-wrap { flex: 1; position: relative; }
+input[type=range] { width: 100%; height: 4px; appearance: none; background: var(--border); border-radius: 2px; outline: none; cursor: pointer; }
+input[type=range].slider-a::-webkit-slider-thumb { appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--purple-600); cursor: pointer; }
+input[type=range].slider-b::-webkit-slider-thumb { appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--teal-600); cursor: pointer; }
+input[type=range].slider-a { accent-color: var(--purple-600); }
+input[type=range].slider-b { accent-color: var(--teal-600); }
+.gap-val { font-size: 11px; color: var(--text-muted); min-width: 30px; text-align: right; }
+.gap-bottom { display: flex; align-items: center; gap: 10px; }
+.gap-delta { font-size: 12px; font-weight: 500; padding: 2px 8px; border-radius: 4px; }
+.resolvability-badge { font-size: 11px; padding: 2px 8px; border-radius: 20px; margin-left: auto; }
+
+/* blind spots */
+.blind-spot-row { padding: 12px 18px; border-bottom: 0.5px solid var(--border); display: flex; gap: 10px; align-items: flex-start; }
+.blind-spot-row:last-child { border-bottom: none; }
+.bs-icon { width: 20px; height: 20px; background: var(--gray-50); border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+.bs-text { font-size: 14px; color: var(--text-primary); line-height: 1.5; }
+
+/* resolution */
+.resolution-section { background: var(--bg-card); border: 0.5px solid var(--green-600); border-radius: var(--r-lg); overflow: hidden; }
+.resolution-header { display: flex; align-items: center; gap: 10px; padding: 14px 18px; background: var(--green-50); border-bottom: 0.5px solid var(--border); }
+.resolution-title { font-size: 13px; font-weight: 600; color: var(--green-600); }
+.resolution-intro { padding: 14px 18px; font-size: 14px; color: var(--text-secondary); line-height: 1.7; border-bottom: 0.5px solid var(--border); }
+.resolution-row { padding: 14px 18px; border-bottom: 0.5px solid var(--border); display: grid; gap: 10px; }
+.resolution-row:last-child { border-bottom: none; }
+.resolution-claim-label { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; }
+.shift-grid { display: grid; gap: 6px; }
+.shift-line { display: flex; align-items: flex-start; gap: 10px; font-size: 14px; color: var(--text-primary); line-height: 1.5; }
+.shift-who { font-size: 11px; font-weight: 500; background: var(--bg-secondary); color: var(--text-secondary); border-radius: 3px; padding: 2px 7px; white-space: nowrap; margin-top: 2px; flex-shrink: 0; }
+.evidence-list { display: flex; flex-direction: column; gap: 4px; padding-top: 4px; }
+.evidence-item { font-size: 13px; color: var(--text-secondary); padding-left: 16px; position: relative; line-height: 1.5; }
+.evidence-item::before { content: '→'; position: absolute; left: 0; color: var(--green-600); }
+
+.hidden { display: none; }
+.notice { font-size: 12px; color: var(--amber-600); background: var(--amber-50); border-radius: var(--r-sm); padding: 4px 10px; }
+</style>
+</head>
+<body>
+<div class="app">
+
+<header>
+  <h1>Debate to priors</h1>
+  <p>Speak or paste two arguments. Maps surface claims down to root value axioms — the pre-rational beliefs generating the disagreement — then shows what it would take to close each gap.</p>
+</header>
+
+<div class="config-bar">
+  <span class="config-label">Ollama URL</span>
+  <input class="config-input" id="urlInput" type="text" value="http://localhost:11434" />
+  <span class="config-label">Model</span>
+  <input class="config-input" id="modelInput" type="text" value="mistral:latest" />
+  <span id="speechNotice" class="notice hidden">🎙 Mic unavailable in this browser</span>
+</div>
+
+<div class="input-grid">
+  <div class="input-block">
+    <div class="person-header">
+      <div class="person-dot" style="background:var(--purple-600)"></div>
+      <label>Person A</label>
+    </div>
+    <input class="name-input" id="nameA" type="text" placeholder="Name (optional)" maxlength="40" />
+    <div class="textarea-wrap">
+      <textarea id="textA" placeholder="Type, paste, or record argument here…" rows="8"></textarea>
+      <div class="audio-bar">
+        <button class="btn-mic" id="micA" onclick="toggleMic('A')">
+          <span class="mic-dot"></span><span id="micLabelA">Record</span>
+        </button>
+        <span class="audio-status" id="audioStatusA">—</span>
+        <button class="btn-audio-clear" onclick="clearAudio('A')">clear</button>
+      </div>
+    </div>
+  </div>
+  <div class="input-block">
+    <div class="person-header">
+      <div class="person-dot" style="background:var(--teal-600)"></div>
+      <label>Person B</label>
+    </div>
+    <input class="name-input" id="nameB" type="text" placeholder="Name (optional)" maxlength="40" />
+    <div class="textarea-wrap">
+      <textarea id="textB" placeholder="Type, paste, or record argument here…" rows="8"></textarea>
+      <div class="audio-bar">
+        <button class="btn-mic" id="micB" onclick="toggleMic('B')">
+          <span class="mic-dot"></span><span id="micLabelB">Record</span>
+        </button>
+        <span class="audio-status" id="audioStatusB">—</span>
+        <button class="btn-audio-clear" onclick="clearAudio('B')">clear</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="actions">
+  <button class="btn-primary" id="btnAnalyze" onclick="analyze()">Analyze disagreement</button>
+  <button class="btn-secondary" onclick="loadExample()">Load example</button>
+  <button class="btn-ghost" onclick="clearAll()">Clear all</button>
+</div>
+
+<div id="statusBar" class="status-bar hidden">
+  <div class="spinner"></div>
+  <span id="statusMsg">Working…</span>
+</div>
+<div id="errorBox" class="error-box hidden"></div>
+<div id="results" class="results hidden"></div>
+
+</div>
+<script>
+// ── Example ──────────────────────────────────────────────────────────────────
+const EXAMPLES = {
+  nameA: 'Maria (pro-immortality)',
+  nameB: 'James (pro-natural life)',
+  textA: `I think defeating aging and death is the most important project humanity could pursue. Death is not beautiful or meaningful — it is just the termination of everything a person is. Every year we delay, millions of people lose their lives unnecessarily. The argument that death gives life meaning is a coping mechanism we invented because we had no alternative. If we could choose, who would actually choose to die? We extend life with medicine all the time and consider it obviously good. Radical life extension is just more of the same. The benefits — accumulated wisdom, deeper relationships, more time to contribute — seem overwhelmingly positive.`,
+  textB: `There is something deeply wrong with the drive to defeat death. I'm not just saying this because it seems impossible — I think even if it were possible, it would be a mistake. Death is part of what gives life its urgency, its shape. Without it, I genuinely worry that existence becomes formless and motivation drains away. More fundamentally, there is a natural order to things — generations replace each other, each bringing fresh perspectives. Immortal people would concentrate power and wealth indefinitely. And there's something spiritually important about accepting our limits, about recognizing that we are part of something larger than our individual persistence. Extending life modestly with medicine is different from refusing to die at all.`
+};
+
+function loadExample() {
+  document.getElementById('nameA').value = EXAMPLES.nameA;
+  document.getElementById('nameB').value = EXAMPLES.nameB;
+  document.getElementById('textA').value = EXAMPLES.textA;
+  document.getElementById('textB').value = EXAMPLES.textB;
+  document.getElementById('audioStatusA').textContent = 'Example loaded';
+  document.getElementById('audioStatusB').textContent = 'Example loaded';
+}
+
+function clearAll() {
+  ['nameA','nameB','textA','textB'].forEach(id => document.getElementById(id).value = '');
+  ['audioStatusA','audioStatusB'].forEach(id => document.getElementById(id).textContent = '—');
+  document.getElementById('results').classList.add('hidden');
+  document.getElementById('errorBox').classList.add('hidden');
+}
+
+function clearAudio(p) {
+  document.getElementById('text'+p).value = '';
+  document.getElementById('audioStatus'+p).textContent = '—';
+}
+
+// ── Speech recognition ────────────────────────────────────────────────────────
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const recs = {A:null, B:null};
+const recState = {A:false, B:false};
+
+if (!SR) {
+  document.getElementById('speechNotice').classList.remove('hidden');
+  ['micA','micB'].forEach(id => document.getElementById(id).disabled = true);
+}
+
+function toggleMic(p) {
+  if (!SR) return;
+  const other = p==='A'?'B':'A';
+  if (recState[other]) stopMic(other);
+  recState[p] ? stopMic(p) : startMic(p);
+}
+
+function startMic(p) {
+  const rec = new SR();
+  rec.continuous = true; rec.interimResults = true; rec.lang = 'en-US';
+  const ta = document.getElementById('text'+p);
+  const st = document.getElementById('audioStatus'+p);
+  const btn = document.getElementById('mic'+p);
+  const lbl = document.getElementById('micLabel'+p);
+  let base = ta.value;
+
+  rec.onstart = () => { recState[p]=true; btn.classList.add('recording'); lbl.textContent='Stop'; st.textContent='Listening…'; };
+  rec.onresult = e => {
+    let interim='', finals='';
+    for (let i=e.resultIndex;i<e.results.length;i++) {
+      const t=e.results[i][0].transcript;
+      e.results[i].isFinal ? finals+=t+' ' : interim+=t;
+    }
+    if (finals) base+=finals;
+    ta.value = base+interim;
+    st.textContent = interim ? `"${interim.slice(0,40)}…"` : 'Listening…';
+  };
+  rec.onerror = e => { st.textContent='Mic error: '+e.error; stopMic(p); };
+  rec.onend = () => { if (recState[p]) rec.start(); };
+  recs[p]=rec; rec.start();
+}
+
+function stopMic(p) {
+  recState[p]=false;
+  try { recs[p]?.stop(); } catch(e){}
+  recs[p]=null;
+  document.getElementById('mic'+p).classList.remove('recording');
+  document.getElementById('micLabel'+p).textContent='Record';
+  document.getElementById('audioStatus'+p).textContent='Done — transcript captured';
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function confColor(c) { return c>=0.7?'var(--teal-600)':c>=0.4?'var(--amber-600)':'var(--coral-600)'; }
+function gapClass(d)  { return d>=0.45?'gap-high':d>=0.25?'gap-mid':'gap-low'; }
+function gapLabel(d)  { return d>=0.45?'core disagreement':d>=0.25?'notable gap':'minor gap'; }
+
+// ── Prompt ────────────────────────────────────────────────────────────────────
+const SYSTEM_PROMPT = `You are an analytic philosopher and Bayesian epistemologist. You decompose arguments into a three-layer structure: surface claims, intermediate premises, and the root value axioms that generate everything else. Your output lets two people see exactly where and why they disagree — without taking sides.
+
+Respond ONLY with a valid JSON object. No markdown, no preamble. Schema:
+
+{
+  "axioms": {
+    "personA": {
+      "statement": "The single deepest value or world-model assumption generating this person's entire position. One sentence. Not a conclusion — the pre-rational belief BEHIND the conclusions.",
+      "label": "3-5 word label for this axiom, e.g. 'Life has intrinsic supremacy'",
+      "confidence": 0.95
+    },
+    "personB": {
+      "statement": "Same for person B.",
+      "label": "3-5 word label",
+      "confidence": 0.95
+    },
+    "resolvable": "yes|no|partial",
+    "resolvableReason": "One sentence: why this axiom gap can or cannot be closed by evidence or argument. If no: what kind of difference is it (value vs value, metaphysical, etc). If partial: what part is resolvable."
+  },
+  "premiseChain": {
+    "personA": [
+      {
+        "level": "surface|intermediate|root",
+        "premise": "A specific claim at this level of abstraction",
+        "confidence": 0.0-1.0,
+        "derivedFrom": "optional: which deeper premise this follows from"
+      }
+    ],
+    "personB": [ ...same structure... ]
+  },
+  "priorGaps": [
+    {
+      "claim": "The shared proposition both parties address (implicitly or explicitly)",
+      "confidenceA": 0.0-1.0,
+      "confidenceB": 0.0-1.0,
+      "type": "empirical|normative",
+      "resolvable": "yes|no|partial",
+      "resolvableReason": "Why"
+    }
+  ],
+  "blindSpots": [
+    "A claim implied by either position but stated by neither — a hidden premise both would need to agree on"
+  ],
+  "resolutions": [
+    {
+      "claim": "The gap this resolution addresses",
+      "shiftA": "What person A would need to update — direction, magnitude, and why",
+      "shiftB": "What person B would need to update — direction, magnitude, and why. If only one needs to shift, say so explicitly.",
+      "evidence": ["Concrete fact, study, or argument that could move one or both parties"]
+    }
+  ],
+  "summary": "2-3 sentences: what this disagreement is really about at the level of world models, not conclusions."
+}
+
+Rules:
+- axioms: dig past stated positions to the bedrock belief that makes those positions feel OBVIOUS to each person. For the immortality debate, one axiom might be 'death is inherently an evil to be conquered' vs 'mortality is constitutive of meaningful human existence'. These are not arguments — they're priors so deep the person may not know they hold them.
+- premiseChain: 2-3 items per level (surface/intermediate/root), per person. Root = what follows directly from the axiom. Surface = what they actually said.
+- priorGaps: sort by gap magnitude, largest first. Only gaps >= 0.1. Include the resolvable field — this is critical.
+- blindSpots: 2-4 items. Focus on premises both people implicitly rely on but neither stated.
+- resolutions: top 3 gaps only. Do NOT force symmetry — if the evidence favors one side, say so.
+- confidence: infer from tone, hedging, qualifiers, emotional intensity, absoluteness of language.
+- type: empirical = fact claim; normative = value/ought claim.`;
+
+// ── Main fetch ────────────────────────────────────────────────────────────────
+let lastResult = null;
+let lastNameA = '', lastNameB = '';
+
+async function analyze() {
+  const textA = document.getElementById('textA').value.trim();
+  const textB = document.getElementById('textB').value.trim();
+  const nameA = document.getElementById('nameA').value.trim() || 'Person A';
+  const nameB = document.getElementById('nameB').value.trim() || 'Person B';
+  const url   = document.getElementById('urlInput').value.trim().replace(/\/$/,'');
+  const model = document.getElementById('modelInput').value.trim() || 'mistral:latest';
+
+  if (!textA || !textB) { showError('Please provide arguments for both people.'); return; }
+
+  document.getElementById('errorBox').classList.add('hidden');
+  document.getElementById('results').classList.add('hidden');
+  document.getElementById('btnAnalyze').disabled = true;
+  showStatus('Sending to Ollama — this may take 15–30 seconds…');
+
+  const userMsg = `Argument by ${nameA}:\n${textA}\n\n---\n\nArgument by ${nameB}:\n${textB}`;
+
+  try {
+    const res = await fetch(`${url}/v1/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user',   content: userMsg }
+        ],
+        temperature: 0.1,
+        response_format: { type: 'json_object' }
+      })
+    });
+
+    if (!res.ok) {
+      const detail = await res.text().catch(()=>'');
+      throw new Error(`Ollama returned ${res.status}. Is it running with CORS enabled? (OLLAMA_ORIGINS=* ollama serve) ${detail.slice(0,120)}`);
+    }
+
+    showStatus('Parsing analysis…');
+    const data = await res.json();
+    const raw  = data.choices?.[0]?.message?.content || '';
+    const clean = raw.replace(/```json|```/g,'').trim();
+
+    let parsed;
+    try { parsed = JSON.parse(clean); }
+    catch(e) { console.error('Raw output:', raw); throw new Error('Model returned malformed JSON. Try a larger model or check console.'); }
+
+    lastResult = parsed; lastNameA = nameA; lastNameB = nameB;
+    hideStatus();
+    renderResults(parsed, nameA, nameB);
+
+  } catch(err) {
+    hideStatus();
+    showError('Error: ' + err.message);
+  } finally {
+    document.getElementById('btnAnalyze').disabled = false;
+  }
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function renderResults(p, nameA, nameB) {
+  const el = document.getElementById('results');
+  el.innerHTML = [
+    renderAxioms(p.axioms, nameA, nameB),
+    renderPremiseChain(p.premiseChain, nameA, nameB),
+    renderPriorGaps(p.priorGaps, nameA, nameB),
+    renderBlindSpots(p.blindSpots),
+    renderResolution(p.resolutions||[], p.summary, nameA, nameB)
+  ].join('');
+  el.classList.remove('hidden');
+  el.scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
+// 1. Root value axioms
+function renderAxioms(ax, nameA, nameB) {
+  if (!ax) return '';
+  const resClass = ax.resolvable==='no'?'resolvable-no':ax.resolvable==='yes'?'resolvable-yes':'resolvable-partial';
+  const resText  = ax.resolvable==='no'?'Not resolvable by evidence':ax.resolvable==='yes'?'Resolvable in principle':'Partially resolvable';
+  return `<div class="axiom-card">
+    <div class="axiom-header">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <circle cx="7" cy="7" r="5.5" stroke="var(--purple-600)" stroke-width="1.3"/>
+        <path d="M7 3.5v4" stroke="var(--purple-600)" stroke-width="1.3" stroke-linecap="round"/>
+        <circle cx="7" cy="10" r="0.8" fill="var(--purple-600)"/>
+      </svg>
+      <span class="axiom-header-title">Root value axioms — the pre-rational beliefs generating this disagreement</span>
+      <span class="axiom-header-sub">dig here first</span>
+    </div>
+    <div class="axiom-body">
+      <div class="axiom-person">
+        <span class="axiom-person-label" style="color:var(--purple-600)">${esc(nameA)}</span>
+        <div class="axiom-statement">"${esc(ax.personA?.statement||'—')}"</div>
+        ${ax.personA?.label ? `<span style="font-size:12px;color:var(--text-muted);font-style:normal">Axiom: <strong style="color:var(--purple-600)">${esc(ax.personA.label)}</strong></span>` : ''}
+      </div>
+      <div class="axiom-divider"></div>
+      <div class="axiom-person">
+        <span class="axiom-person-label" style="color:var(--teal-600)">${esc(nameB)}</span>
+        <div class="axiom-statement">"${esc(ax.personB?.statement||'—')}"</div>
+        ${ax.personB?.label ? `<span style="font-size:12px;color:var(--text-muted);font-style:normal">Axiom: <strong style="color:var(--teal-600)">${esc(ax.personB.label)}</strong></span>` : ''}
+      </div>
+      <div class="axiom-verdict">
+        <div class="axiom-resolvable ${resClass}">${resText}</div>
+        ${esc(ax.resolvableReason||'')}
+      </div>
+    </div>
+  </div>`;
+}
+
+// 2. Premise chain (surface → intermediate → root)
+function renderPremiseChain(chain, nameA, nameB) {
+  if (!chain) return '';
+  const levels = ['surface','intermediate','root'];
+  const levelLabels = { surface:'Surface claims — what they said', intermediate:'Intermediate premises — what they assumed', root:'Root premises — what follows from the axiom' };
+
+  let html = `<div class="chain-card">
+    <div class="chain-header">
+      <div class="chain-dot" style="background:var(--amber-600)"></div>
+      <span class="chain-title">Premise chain — from surface to root</span>
+      <span class="chain-sub">how the argument is structured</span>
+    </div>
+    <div class="chain-body">`;
+
+  levels.forEach((lvl, li) => {
+    const premA = (chain.personA||[]).filter(p=>p.level===lvl);
+    const premB = (chain.personB||[]).filter(p=>p.level===lvl);
+    const allClaims = [];
+
+    // merge by similar claim text — for shared claims show both bars
+    const usedB = new Set();
+    premA.forEach(pa => {
+      // find a rough match in B by shared keywords
+      let matched = null;
+      premB.forEach((pb,i) => {
+        if (usedB.has(i)) return;
+        const wordsA = pa.premise.toLowerCase().split(/\W+/).filter(w=>w.length>4);
+        const wordsB = pb.premise.toLowerCase().split(/\W+/).filter(w=>w.length>4);
+        const overlap = wordsA.filter(w=>wordsB.includes(w)).length;
+        if (overlap >= 2) { matched = {pb, i}; }
+      });
+      if (matched) { usedB.add(matched.i); allClaims.push({pa, pb:matched.pb}); }
+      else allClaims.push({pa, pb:null});
+    });
+    premB.forEach((pb,i) => { if (!usedB.has(i)) allClaims.push({pa:null, pb}); });
+
+    if (allClaims.length === 0) return;
+
+    if (li > 0) html += `<div class="chain-connector"><div class="chain-connector-line"></div><span class="chain-connector-label">↑ derived from</span><div class="chain-connector-line"></div></div>`;
+
+    html += `<div class="premise-level"><div class="premise-level-label">${levelLabels[lvl]}</div>`;
+    allClaims.forEach(({pa, pb}) => {
+      const claim = pa?.premise || pb?.premise || '';
+      const cA = pa?.confidence ?? null;
+      const cB = pb?.confidence ?? null;
+      const delta = (cA!==null && cB!==null) ? Math.abs(cA-cB) : null;
+      html += `<div class="premise-item">
+        <div class="premise-item-text">${esc(claim)}</div>
+        <div class="premise-bars">
+          ${cA!==null ? `<div class="pbar-line">
+            <span class="pbar-who" style="color:var(--purple-600)">A</span>
+            <div class="pbar-bg"><div class="pbar-fill" style="width:${Math.round(cA*100)}%;background:var(--purple-600)"></div></div>
+            <span class="pbar-val">${Math.round(cA*100)}%</span>
+          </div>` : ''}
+          ${cB!==null ? `<div class="pbar-line">
+            <span class="pbar-who" style="color:var(--teal-600)">B</span>
+            <div class="pbar-bg"><div class="pbar-fill" style="width:${Math.round(cB*100)}%;background:var(--teal-600)"></div></div>
+            <span class="pbar-val">${Math.round(cB*100)}%</span>
+          </div>` : ''}
+        </div>
+        ${delta!==null ? `<span class="premise-delta ${gapClass(delta)}">Δ${Math.round(delta*100)}pp</span>` : ''}
+      </div>`;
+    });
+    html += `</div>`;
+  });
+
+  html += `</div></div>`;
+  return html;
+}
+
+// 3. Prior gaps — now with interactive sliders and resolvability
+function renderPriorGaps(gaps, nameA, nameB) {
+  if (!gaps || gaps.length===0) return '';
+  const rows = gaps.map((g,i) => {
+    const cA = typeof g.confidenceA==='number' ? g.confidenceA : 0.5;
+    const cB = typeof g.confidenceB==='number' ? g.confidenceB : 0.5;
+    const delta = Math.abs(cA-cB);
+    const pctA = Math.round(cA*100), pctB = Math.round(cB*100);
+    const dPct = Math.round(delta*100);
+    const type = g.type||'empirical';
+    const resClass = g.resolvable==='no'?'resolvable-no':g.resolvable==='yes'?'resolvable-yes':'resolvable-partial';
+    const resText  = g.resolvable==='no'?'Value difference — evidence cannot close this':g.resolvable==='yes'?'Empirically resolvable':'Partially resolvable';
+    return `<div class="gap-row" id="gaprow-${i}">
+      <div class="gap-row-top">
+        <div class="gap-claim">${esc(g.claim)}</div>
+        <span class="gap-type-pill pill-${type}">${type}</span>
+      </div>
+      <div class="gap-bars">
+        <div class="gap-bar-line">
+          <span class="gap-person-label">${esc(nameA)}</span>
+          <div class="gap-slider-wrap">
+            <input type="range" class="slider-a" id="sA-${i}" min="0" max="100" value="${pctA}" oninput="updateSlider(${i},'A',this.value)">
+          </div>
+          <span class="gap-val" id="vA-${i}">${pctA}%</span>
+        </div>
+        <div class="gap-bar-line">
+          <span class="gap-person-label">${esc(nameB)}</span>
+          <div class="gap-slider-wrap">
+            <input type="range" class="slider-b" id="sB-${i}" min="0" max="100" value="${pctB}" oninput="updateSlider(${i},'B',this.value)">
+          </div>
+          <span class="gap-val" id="vB-${i}">${pctB}%</span>
+        </div>
+      </div>
+      <div class="gap-bottom">
+        <span class="gap-delta ${gapClass(delta)}" id="gdelta-${i}">Δ ${dPct}pp — ${gapLabel(delta)}</span>
+        <span class="resolvability-badge ${resClass}" title="${esc(g.resolvableReason||'')}">${resText}</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  return `<div class="section-card">
+    <div class="section-header">
+      <div class="section-dot" style="background:var(--coral-600)"></div>
+      <span class="section-title">Prior gaps — where they actually disagree</span>
+      <span class="section-sub">${gaps.length} shared claims · drag sliders to explore</span>
+    </div>
+    <div class="section-body">${rows}</div>
+  </div>`;
+}
+
+function updateSlider(i, person, val) {
+  document.getElementById('v'+person+'-'+i).textContent = val+'%';
+  const vA = parseInt(document.getElementById('sA-'+i).value);
+  const vB = parseInt(document.getElementById('sB-'+i).value);
+  const delta = Math.abs(vA-vB)/100;
+  const dEl = document.getElementById('gdelta-'+i);
+  dEl.className = 'gap-delta ' + gapClass(delta);
+  dEl.textContent = `Δ ${Math.round(delta*100)}pp — ${gapLabel(delta)}`;
+}
+
+// 4. Blind spots
+function renderBlindSpots(spots) {
+  if (!spots || spots.length===0) return '';
+  const rows = spots.map(s=>`<div class="blind-spot-row">
+    <div class="bs-icon">
+      <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+        <circle cx="5" cy="5" r="4" stroke="var(--text-muted)" stroke-width="1.2"/>
+        <line x1="5" y1="2.5" x2="5" y2="5.5" stroke="var(--text-muted)" stroke-width="1.2" stroke-linecap="round"/>
+        <circle cx="5" cy="7.2" r="0.6" fill="var(--text-muted)"/>
+      </svg>
+    </div>
+    <div class="bs-text">${esc(s)}</div>
+  </div>`).join('');
+
+  return `<div class="section-card">
+    <div class="section-header">
+      <div class="section-dot" style="background:var(--gray-600)"></div>
+      <span class="section-title">Blind spots — premises neither stated</span>
+      <span class="section-sub">${spots.length} items</span>
+    </div>
+    <div class="section-body">${rows}</div>
+  </div>`;
+}
+
+// 5. Resolutions
+function renderResolution(resolutions, summary, nameA, nameB) {
+  const rows = (resolutions||[]).map(r => {
+    const evHtml = (r.evidence||[]).map(e=>`<div class="evidence-item">${esc(e)}</div>`).join('');
+    return `<div class="resolution-row">
+      <div class="resolution-claim-label">${esc(r.claim)}</div>
+      <div class="shift-grid">
+        ${r.shiftA ? `<div class="shift-line"><span class="shift-who" style="background:var(--purple-50);color:var(--purple-600)">${esc(nameA)}</span><span>${esc(r.shiftA)}</span></div>` : ''}
+        ${r.shiftB ? `<div class="shift-line"><span class="shift-who" style="background:var(--teal-50);color:var(--teal-600)">${esc(nameB)}</span><span>${esc(r.shiftB)}</span></div>` : ''}
+      </div>
+      ${evHtml ? `<div class="evidence-list">${evHtml}</div>` : ''}
+    </div>`;
+  }).join('');
+
+  return `<div class="resolution-section">
+    <div class="resolution-header">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <path d="M7 1.5C4 1.5 1.5 4 1.5 7s2.5 5.5 5.5 5.5S12.5 10 12.5 7 10 1.5 7 1.5z" stroke="var(--green-600)" stroke-width="1.2"/>
+        <path d="M4.5 7l1.8 1.8L9.5 5.5" stroke="var(--green-600)" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span class="resolution-title">Resolution paths — minimum shifts to reach agreement</span>
+    </div>
+    ${summary ? `<div class="resolution-intro">${esc(summary)}</div>` : ''}
+    <div class="section-body">${rows||'<div style="padding:14px 18px;font-size:13px;color:var(--text-muted)">No resolution paths generated.</div>'}</div>
+  </div>`;
+}
+
+// ── Status helpers ────────────────────────────────────────────────────────────
+function showStatus(msg) { document.getElementById('statusMsg').textContent=msg; document.getElementById('statusBar').classList.remove('hidden'); }
+function hideStatus() { document.getElementById('statusBar').classList.add('hidden'); }
+function showError(msg) { const e=document.getElementById('errorBox'); e.textContent=msg; e.classList.remove('hidden'); }
+</script>
+</body>
+</html>
