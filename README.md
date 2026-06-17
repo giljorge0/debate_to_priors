@@ -83,13 +83,15 @@ The empirical/normative classification is also a model judgment and will sometim
 
 The tool surfaces disagreements; it doesn't resolve them. That's intentional. The resolution paths are suggestions, not prescriptions. The point is to give both parties a shared map of the disagreement so they can decide together what to do with it.
 
+**A note on reliability with small/local models.** Earlier versions asked the model to free-form an enum string (`"surface"`, `"empirical"`, `"yes"`, etc.) inside a JSON blob and matched on it exactly. Smaller local models — `mistral:latest` especially — would get the reasoning right but drift on casing (`"Surface"`, `"ROOT"`), which silently dropped the entire argument map and premise-chain view (the model had done the work; the UI was just throwing it away on a string mismatch). Both files now constrain decoding so this can't happen: the Ollama version calls the native `/api/chat` endpoint with a full JSON Schema in `format` (grammar-constrained decoding — the model is structurally unable to emit an out-of-enum value), and the Anthropic version forces a `tool_choice` call against the same schema as `input_schema` instead of parsing free-form text. A client-side normalization pass sits underneath both as a second line of defense, and if a model still returns no premise chain at all, the UI now says so explicitly instead of rendering a silently empty section.
+
 ---
 
 ## Built with
 
 - Vanilla HTML/CSS/JS — no framework, no build step
 - Web Speech API for voice transcription (Chrome/Edge; falls back gracefully)
-- Ollama (local) or Anthropic API for the analysis
+- Ollama (local, native `/api/chat` with schema-constrained `format`) or Anthropic API (forced tool-use) for the analysis — both paths return schema-valid structured output rather than parsed free text
 - Prompted as an analytic philosopher and Bayesian epistemologist
 
 ---

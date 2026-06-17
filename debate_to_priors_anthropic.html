@@ -436,10 +436,132 @@ function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').repl
 function gapClass(d){return d>=0.45?'gap-high':d>=0.25?'gap-mid':'gap-low';}
 function gapLabel(d){return d>=0.45?'core disagreement':d>=0.25?'notable gap':'minor gap';}
 
+// ── Output normalization ────────────────────────────────────────────────────
+// Belt-and-suspenders: tool-use input below is schema-validated server-side,
+// so this should rarely trigger with Claude — but it costs nothing to keep
+// the renderers (which match level/type/resolvable by exact string) safe
+// against any stray casing, and it's what makes the Ollama version's smaller
+// local models tolerable too.
+function normalizeLevel(raw) {
+  const s = String(raw || '').toLowerCase().trim();
+  if (s.startsWith('surf')) return 'surface';
+  if (s.startsWith('root') || s.includes('axiom')) return 'root';
+  if (s.startsWith('inter') || s.includes('mid')) return 'intermediate';
+  return 'intermediate'; // unrecognized label — bucket in the middle so it still surfaces somewhere
+}
+function normalizeEnum(raw, allowed, fallback) {
+  const s = String(raw || '').toLowerCase().trim();
+  return allowed.includes(s) ? s : fallback;
+}
+function normalizeAnalysis(parsed) {
+  if (!parsed || typeof parsed !== 'object') return parsed;
+  if (parsed.axioms) {
+    parsed.axioms.resolvable = normalizeEnum(parsed.axioms.resolvable, ['yes','no','partial'], 'partial');
+  }
+  if (parsed.premiseChain) {
+    ['personA','personB'].forEach(p => {
+      const arr = Array.isArray(parsed.premiseChain[p]) ? parsed.premiseChain[p] : [];
+      parsed.premiseChain[p] = arr
+        .filter(it => it && typeof it.premise === 'string' && it.premise.trim())
+        .map(it => ({
+          level: normalizeLevel(it.level),
+          premise: it.premise.trim(),
+          confidence: (typeof it.confidence === 'number' && it.confidence >= 0 && it.confidence <= 1) ? it.confidence : 0.5
+        }));
+    });
+  } else {
+    parsed.premiseChain = { personA: [], personB: [] };
+  }
+  if (Array.isArray(parsed.priorGaps)) {
+    parsed.priorGaps = parsed.priorGaps.map(g => ({
+      ...g,
+      type: normalizeEnum(g.type, ['empirical','normative'], 'empirical'),
+      resolvable: normalizeEnum(g.resolvable, ['yes','no','partial'], 'partial')
+    }));
+  }
+  return parsed;
+}
+
+// ── JSON Schema (passed as the tool's input_schema — Claude must call the tool ──
+// with arguments matching this shape, which is how we get guaranteed-valid
+// enum fields instead of hoping the model's prose output parses as JSON).
+const RESPONSE_SCHEMA = {
+  type: "object",
+  properties: {
+    axioms: {
+      type: "object",
+      properties: {
+        personA: { type: "object", properties: {
+          statement: { type: "string", description: "The single deepest pre-rational belief generating this person's entire position. Not a conclusion — the prior BEHIND the conclusions." },
+          label: { type: "string", description: "3-5 word label" },
+          confidence: { type: "number", minimum: 0, maximum: 1 }
+        }, required: ["statement","label"] },
+        personB: { type: "object", properties: {
+          statement: { type: "string" }, label: { type: "string" }, confidence: { type: "number", minimum: 0, maximum: 1 }
+        }, required: ["statement","label"] },
+        resolvable: { type: "string", enum: ["yes","no","partial"] },
+        resolvableReason: { type: "string", description: "One sentence: why this axiom gap can or cannot be closed by evidence." }
+      },
+      required: ["personA","personB","resolvable"]
+    },
+    premiseChain: {
+      type: "object",
+      description: "2-3 atomic premises per level, per person.",
+      properties: {
+        personA: { type: "array", items: { type: "object", properties: {
+          level: { type: "string", enum: ["surface","intermediate","root"] },
+          premise: { type: "string" },
+          confidence: { type: "number", minimum: 0, maximum: 1 }
+        }, required: ["level","premise"] } },
+        personB: { type: "array", items: { type: "object", properties: {
+          level: { type: "string", enum: ["surface","intermediate","root"] },
+          premise: { type: "string" },
+          confidence: { type: "number", minimum: 0, maximum: 1 }
+        }, required: ["level","premise"] } }
+      },
+      required: ["personA","personB"]
+    },
+    priorGaps: {
+      type: "array",
+      description: "Claims both parties address, sorted by gap magnitude desc. Only gaps >= 0.1.",
+      items: { type: "object", properties: {
+        claim: { type: "string" },
+        confidenceA: { type: "number", minimum: 0, maximum: 1 },
+        confidenceB: { type: "number", minimum: 0, maximum: 1 },
+        type: { type: "string", enum: ["empirical","normative"] },
+        resolvable: { type: "string", enum: ["yes","no","partial"] },
+        resolvableReason: { type: "string" }
+      }, required: ["claim","confidenceA","confidenceB","type","resolvable"] }
+    },
+    blindSpots: { type: "array", description: "2-4 premises implied by both positions but stated by neither.", items: { type: "string" } },
+    resolutions: {
+      type: "array",
+      description: "Top 3 gaps only. No forced symmetry — if only one party needs to shift, say so.",
+      items: { type: "object", properties: {
+        claim: { type: "string" }, shiftA: { type: "string" }, shiftB: { type: "string" },
+        evidence: { type: "array", items: { type: "string" } }
+      }, required: ["claim"] }
+    },
+    summary: { type: "string", description: "2-3 sentences on what this disagreement is really about at the level of world models." }
+  },
+  required: ["axioms","premiseChain","priorGaps","blindSpots","resolutions","summary"]
+};
+
+const RESOLUTIONS_SCHEMA = {
+  type: "object",
+  properties: {
+    resolutions: { type: "array", items: { type: "object", properties: {
+      claim: { type: "string" }, shiftA: { type: "string" }, shiftB: { type: "string" },
+      evidence: { type: "array", items: { type: "string" } }
+    }, required: ["claim"] } }
+  },
+  required: ["resolutions"]
+};
+
 // ── System prompt ─────────────────────────────────────────────────────────────
 const SYSTEM_PROMPT = `You are an analytic philosopher and Bayesian epistemologist. You decompose arguments into a three-layer structure: surface claims, intermediate premises, and the root value axioms that generate everything else.
 
-Respond ONLY with a valid JSON object. No markdown, no preamble. Schema:
+Call the submit_analysis tool with your findings — don't respond with plain text. Shape, for reference (the exact structure and enum values are also enforced by the tool's schema — focus on getting the *content* right):
 
 {
   "axioms": {
@@ -462,14 +584,14 @@ Respond ONLY with a valid JSON object. No markdown, no preamble. Schema:
   "summary": "2-3 sentences on what this disagreement is really about at the level of world models."
 }
 
-Rules: axioms = bedrock beliefs so deep the person may not know they hold them. premiseChain: 2-3 per level. priorGaps: sort by gap magnitude desc, only gaps >= 0.1. resolutions: top 3 only, no forced symmetry. confidence: infer from tone and hedging.`;
+Rules: axioms = bedrock beliefs so deep the person may not know they hold them. premiseChain: 2-3 per level, every item needs a level. priorGaps: sort by gap magnitude desc, only gaps >= 0.1. resolutions: top 3 only, no forced symmetry. confidence: infer from tone and hedging.`;
 
 // recalc prompt — lighter, focused on a single concession
 const RECALC_PROMPT = (nameA, nameB, claim, newConfA, newConfB, prevResolutions) =>
 `Person ${nameA} now assigns ${newConfA}% confidence to the claim: "${claim}".
 Person ${nameB} now assigns ${newConfB}% confidence to the same claim.
 
-Given this update, re-evaluate ONLY the resolution paths. Return a JSON object with a single key "resolutions" containing an updated array using the same schema as before (claim, shiftA, shiftB, evidence[]). No other keys. No markdown.
+Given this update, re-evaluate ONLY the resolution paths. Call the submit_resolutions tool with an updated array using the same schema as before (claim, shiftA, shiftB, evidence[]).
 
 Previous resolutions for context:
 ${JSON.stringify(prevResolutions||[], null, 2)}`;
@@ -498,7 +620,8 @@ async function analyze() {
 
   const userMsg = `Argument by ${nameA}:\n${textA}\n\n---\n\nArgument by ${nameB}:\n${textB}`;
   try {
-    const res = await anthropicCall(apiKey, model, SYSTEM_PROMPT, userMsg);
+    const res = await anthropicCall(apiKey, model, SYSTEM_PROMPT, userMsg, RESPONSE_SCHEMA, 'submit_analysis', 'Submit the structured debate-to-priors analysis.');
+    normalizeAnalysis(res);
     lastResult = res; lastNameA = nameA; lastNameB = nameB;
     saveSession(res, nameA, nameB);
     hideStatus();
@@ -511,7 +634,11 @@ async function analyze() {
   }
 }
 
-async function anthropicCall(apiKey, model, system, user) {
+// Forces Claude to respond via tool-use with input matching `schema`, instead
+// of asking it to print JSON as plain text and hoping the parse succeeds.
+// This is what guarantees premiseChain[].level, priorGaps[].type, and
+// resolvable fields land exactly on the enum values the renderers expect.
+async function anthropicCall(apiKey, model, system, user, schema, toolName, toolDescription) {
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method:'POST',
     headers:{
@@ -524,7 +651,9 @@ async function anthropicCall(apiKey, model, system, user) {
       model,
       max_tokens: 4096,
       system,
-      messages:[{role:'user',content:user}]
+      messages:[{role:'user',content:user}],
+      tools:[{ name: toolName, description: toolDescription, input_schema: schema }],
+      tool_choice:{ type:'tool', name: toolName }
     })
   });
   if (!r.ok) {
@@ -532,10 +661,12 @@ async function anthropicCall(apiKey, model, system, user) {
     throw new Error(err.error?.message || `Anthropic API error ${r.status}`);
   }
   const data = await r.json();
-  const raw = data.content?.find(b=>b.type==='text')?.text || '';
-  const clean = raw.replace(/```json|```/g,'').trim();
-  try { return JSON.parse(clean); }
-  catch(e) { console.error('Raw output:', raw); throw new Error('Model returned malformed JSON. Check console.'); }
+  const toolBlock = data.content?.find(b=>b.type==='tool_use' && b.name===toolName);
+  if (!toolBlock) {
+    const textBlock = data.content?.find(b=>b.type==='text');
+    throw new Error(textBlock?.text ? `Model did not return structured output: ${textBlock.text.slice(0,180)}` : 'Model did not return structured output.');
+  }
+  return toolBlock.input;
 }
 
 // ── Slider → live recalculation ───────────────────────────────────────────────
@@ -566,7 +697,7 @@ async function triggerRecalc(gapIndex, newConfA, newConfB) {
 
   try {
     const prompt = RECALC_PROMPT(lastNameA, lastNameB, gap.claim, newConfA, newConfB, lastResult.resolutions);
-    const updated = await anthropicCall(apiKey, model, 'You are a Bayesian epistemologist. Return only valid JSON with a single key "resolutions".', prompt);
+    const updated = await anthropicCall(apiKey, model, 'You are a Bayesian epistemologist.', prompt, RESOLUTIONS_SCHEMA, 'submit_resolutions', 'Submit the updated resolution paths.');
 
     if (updated.resolutions) {
       // patch into lastResult and re-render just the resolution section
@@ -688,6 +819,16 @@ function renderGraph(premiseChain, axioms, nameA, nameB) {
     g.append('text').attr('x',8).attr('y',l.y+4).attr('font-size',9).attr('fill','var(--text-muted)').attr('font-family','-apple-system,sans-serif').text(l.label);
     g.append('line').attr('x1',0).attr('x2',W).attr('y1',l.y-22).attr('y2',l.y-22).attr('stroke','var(--border)').attr('stroke-width',0.5);
   });
+
+  // nodes.length is always >=2 (the two axioms are pushed unconditionally above);
+  // if that's *all* there is, the model didn't return a usable premise chain —
+  // say so explicitly instead of leaving three empty bands of whitespace.
+  if (nodes.length <= 2) {
+    g.append('text').attr('x', W/2).attr('y', levelYs.intermediate)
+      .attr('text-anchor','middle').attr('font-size',12).attr('fill','var(--text-muted)')
+      .attr('font-family','-apple-system,sans-serif')
+      .text('Model returned axioms but no surface/intermediate/root premises — try re-running.');
+  }
 }
 
 // ── Render all ────────────────────────────────────────────────────────────────
@@ -756,10 +897,16 @@ function renderGraphCard(premiseChain, axioms, nameA, nameB) {
 }
 
 function renderPremiseChain(chain, nameA, nameB) {
-  if (!chain) return '';
+  if (!chain) chain = { personA: [], personB: [] };
+  const totalItems = (chain.personA||[]).length + (chain.personB||[]).length;
   const levels = ['surface','intermediate','root'];
   const levelLabels = {surface:'Surface claims — what they said',intermediate:'Intermediate premises — assumed',root:'Root premises — derived from axiom'};
   let html = `<div class="chain-card"><div class="chain-header"><div class="chain-dot" style="background:var(--amber-600)"></div><span class="chain-title">Premise chain — detail view</span><span class="chain-sub">surface → root</span></div><div class="chain-body">`;
+  if (totalItems === 0) {
+    html += `<div style="padding:14px 18px;font-size:13px;color:var(--text-muted)">The model didn't return a premise breakdown for this analysis. Try re-running.</div>`;
+    html += `</div></div>`;
+    return html;
+  }
   levels.forEach((lvl,li)=>{
     const premA=(chain.personA||[]).filter(p=>p.level===lvl);
     const premB=(chain.personB||[]).filter(p=>p.level===lvl);

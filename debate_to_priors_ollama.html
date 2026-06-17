@@ -432,10 +432,140 @@ function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').repl
 function gapClass(d){return d>=0.45?'gap-high':d>=0.25?'gap-mid':'gap-low';}
 function gapLabel(d){return d>=0.45?'core disagreement':d>=0.25?'notable gap':'minor gap';}
 
+// ── Output normalization ────────────────────────────────────────────────────
+// Local models (especially small ones like mistral:latest) reliably get the
+// JSON *shape* right but are inconsistent about exact enum strings — e.g.
+// returning "Surface" or "ROOT" instead of "surface"/"root". Since the
+// renderers below do exact-string matching, a single wrong case used to make
+// an entire level silently vanish from both the argument map and the premise
+// chain (the model still did the reasoning — the UI was just throwing it
+// away). This normalizes enum-like fields defensively, on top of the
+// schema-enforced decoding in ollamaCall below, so the UI degrades gracefully
+// even on older Ollama versions or models that don't honor `format` well.
+function normalizeLevel(raw) {
+  const s = String(raw || '').toLowerCase().trim();
+  if (s.startsWith('surf')) return 'surface';
+  if (s.startsWith('root') || s.includes('axiom')) return 'root';
+  if (s.startsWith('inter') || s.includes('mid')) return 'intermediate';
+  return 'intermediate'; // unrecognized label — bucket in the middle so it still surfaces somewhere
+}
+function normalizeEnum(raw, allowed, fallback) {
+  const s = String(raw || '').toLowerCase().trim();
+  return allowed.includes(s) ? s : fallback;
+}
+function normalizeAnalysis(parsed) {
+  if (!parsed || typeof parsed !== 'object') return parsed;
+  if (parsed.axioms) {
+    parsed.axioms.resolvable = normalizeEnum(parsed.axioms.resolvable, ['yes','no','partial'], 'partial');
+  }
+  if (parsed.premiseChain) {
+    ['personA','personB'].forEach(p => {
+      const arr = Array.isArray(parsed.premiseChain[p]) ? parsed.premiseChain[p] : [];
+      parsed.premiseChain[p] = arr
+        .filter(it => it && typeof it.premise === 'string' && it.premise.trim())
+        .map(it => ({
+          level: normalizeLevel(it.level),
+          premise: it.premise.trim(),
+          confidence: (typeof it.confidence === 'number' && it.confidence >= 0 && it.confidence <= 1) ? it.confidence : 0.5
+        }));
+    });
+  } else {
+    parsed.premiseChain = { personA: [], personB: [] };
+  }
+  if (Array.isArray(parsed.priorGaps)) {
+    parsed.priorGaps = parsed.priorGaps.map(g => ({
+      ...g,
+      type: normalizeEnum(g.type, ['empirical','normative'], 'empirical'),
+      resolvable: normalizeEnum(g.resolvable, ['yes','no','partial'], 'partial')
+    }));
+  }
+  return parsed;
+}
+
+// ── JSON Schema (passed to Ollama's native `format` param for grammar-constrained decoding) ──
+// This is the actual fix for the enum problem described above: rather than
+// just *asking* the model nicely for "surface|intermediate|root", Ollama's
+// native /api/chat endpoint can constrain token-level decoding so the model
+// is structurally unable to emit anything outside the enum. This needs the
+// native endpoint (not the OpenAI-compatible /v1/chat/completions shim,
+// whose schema support varies by Ollama version) — see ollamaCall below.
+const RESPONSE_SCHEMA = {
+  type: "object",
+  properties: {
+    axioms: {
+      type: "object",
+      properties: {
+        personA: { type: "object", properties: {
+          statement: { type: "string", description: "The single deepest pre-rational belief generating this person's entire position. Not a conclusion — the prior BEHIND the conclusions." },
+          label: { type: "string", description: "3-5 word label" },
+          confidence: { type: "number", minimum: 0, maximum: 1 }
+        }, required: ["statement","label"] },
+        personB: { type: "object", properties: {
+          statement: { type: "string" }, label: { type: "string" }, confidence: { type: "number", minimum: 0, maximum: 1 }
+        }, required: ["statement","label"] },
+        resolvable: { type: "string", enum: ["yes","no","partial"] },
+        resolvableReason: { type: "string", description: "One sentence: why this axiom gap can or cannot be closed by evidence." }
+      },
+      required: ["personA","personB","resolvable"]
+    },
+    premiseChain: {
+      type: "object",
+      description: "2-3 atomic premises per level, per person.",
+      properties: {
+        personA: { type: "array", items: { type: "object", properties: {
+          level: { type: "string", enum: ["surface","intermediate","root"] },
+          premise: { type: "string" },
+          confidence: { type: "number", minimum: 0, maximum: 1 }
+        }, required: ["level","premise"] } },
+        personB: { type: "array", items: { type: "object", properties: {
+          level: { type: "string", enum: ["surface","intermediate","root"] },
+          premise: { type: "string" },
+          confidence: { type: "number", minimum: 0, maximum: 1 }
+        }, required: ["level","premise"] } }
+      },
+      required: ["personA","personB"]
+    },
+    priorGaps: {
+      type: "array",
+      description: "Claims both parties address, sorted by gap magnitude desc. Only gaps >= 0.1.",
+      items: { type: "object", properties: {
+        claim: { type: "string" },
+        confidenceA: { type: "number", minimum: 0, maximum: 1 },
+        confidenceB: { type: "number", minimum: 0, maximum: 1 },
+        type: { type: "string", enum: ["empirical","normative"] },
+        resolvable: { type: "string", enum: ["yes","no","partial"] },
+        resolvableReason: { type: "string" }
+      }, required: ["claim","confidenceA","confidenceB","type","resolvable"] }
+    },
+    blindSpots: { type: "array", description: "2-4 premises implied by both positions but stated by neither.", items: { type: "string" } },
+    resolutions: {
+      type: "array",
+      description: "Top 3 gaps only. No forced symmetry — if only one party needs to shift, say so.",
+      items: { type: "object", properties: {
+        claim: { type: "string" }, shiftA: { type: "string" }, shiftB: { type: "string" },
+        evidence: { type: "array", items: { type: "string" } }
+      }, required: ["claim"] }
+    },
+    summary: { type: "string", description: "2-3 sentences on what this disagreement is really about at the level of world models." }
+  },
+  required: ["axioms","premiseChain","priorGaps","blindSpots","resolutions","summary"]
+};
+
+const RESOLUTIONS_SCHEMA = {
+  type: "object",
+  properties: {
+    resolutions: { type: "array", items: { type: "object", properties: {
+      claim: { type: "string" }, shiftA: { type: "string" }, shiftB: { type: "string" },
+      evidence: { type: "array", items: { type: "string" } }
+    }, required: ["claim"] } }
+  },
+  required: ["resolutions"]
+};
+
 // ── System prompt ─────────────────────────────────────────────────────────────
 const SYSTEM_PROMPT = `You are an analytic philosopher and Bayesian epistemologist. You decompose arguments into a three-layer structure: surface claims, intermediate premises, and the root value axioms that generate everything else.
 
-Respond ONLY with a valid JSON object. No markdown, no preamble. Schema:
+Respond ONLY with a valid JSON object matching the schema you've been given. No markdown, no preamble. Schema shape, for reference (the exact structure and enum values are also enforced separately — focus on getting the *content* right):
 
 {
   "axioms": {
@@ -458,7 +588,7 @@ Respond ONLY with a valid JSON object. No markdown, no preamble. Schema:
   "summary": "2-3 sentences on what this disagreement is really about at the level of world models."
 }
 
-Rules: axioms = bedrock beliefs so deep the person may not know they hold them. premiseChain: 2-3 per level. priorGaps: sort by gap magnitude desc, only gaps >= 0.1. resolutions: top 3 only, no forced symmetry. confidence: infer from tone and hedging.`;
+Rules: axioms = bedrock beliefs so deep the person may not know they hold them. premiseChain: 2-3 per level, every item needs a level. priorGaps: sort by gap magnitude desc, only gaps >= 0.1. resolutions: top 3 only, no forced symmetry. confidence: infer from tone and hedging.`;
 
 // recalc prompt — lighter, focused on a single concession
 const RECALC_PROMPT = (nameA, nameB, claim, newConfA, newConfB, prevResolutions) =>
@@ -493,7 +623,8 @@ async function analyze() {
 
   const userMsg = `Argument by ${nameA}:\n${textA}\n\n---\n\nArgument by ${nameB}:\n${textB}`;
   try {
-    const res = await ollamaCall(url, model, SYSTEM_PROMPT, userMsg);
+    const res = await ollamaCall(url, model, SYSTEM_PROMPT, userMsg, RESPONSE_SCHEMA);
+    normalizeAnalysis(res);
     lastResult = res; lastNameA = nameA; lastNameB = nameB;
     saveSession(res, nameA, nameB);
     hideStatus();
@@ -506,26 +637,31 @@ async function analyze() {
   }
 }
 
-async function ollamaCall(url, model, system, user) {
-  const r = await fetch(`${url}/v1/chat/completions`, {
+// Uses Ollama's native /api/chat endpoint (not the OpenAI-compat /v1/ shim)
+// so the `format` param can carry a full JSON Schema for grammar-constrained
+// decoding — this is what keeps small models like mistral on-schema for the
+// enum fields (level, type, resolvable) that the renderers match on exactly.
+async function ollamaCall(url, model, system, user, schema) {
+  const r = await fetch(`${url}/api/chat`, {
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body: JSON.stringify({
       model,
       messages:[{role:'system',content:system},{role:'user',content:user}],
-      temperature:0.1,
-      response_format:{type:'json_object'}
+      stream:false,
+      format: schema,
+      options:{ temperature:0.1 }
     })
   });
   if (!r.ok) {
     const d = await r.text().catch(()=>'');
-    throw new Error(`Ollama ${r.status}. Running? Try: OLLAMA_ORIGINS=* ollama serve. ${d.slice(0,100)}`);
+    throw new Error(`Ollama ${r.status}. Running? Try: OLLAMA_ORIGINS=* ollama serve. ${d.slice(0,150)}`);
   }
   const data = await r.json();
-  const raw = data.choices?.[0]?.message?.content || '';
+  const raw = data.message?.content || '';
   const clean = raw.replace(/```json|```/g,'').trim();
   try { return JSON.parse(clean); }
-  catch(e) { console.error('Raw output:', raw); throw new Error('Model returned malformed JSON. Try a larger model (e.g. llama3:8b).'); }
+  catch(e) { console.error('Raw output:', raw); throw new Error('Model returned malformed JSON. Try a larger model (e.g. llama3:8b) or update Ollama to the latest version.'); }
 }
 
 // ── Slider → live recalculation ───────────────────────────────────────────────
@@ -556,7 +692,7 @@ async function triggerRecalc(gapIndex, newConfA, newConfB) {
 
   try {
     const prompt = RECALC_PROMPT(lastNameA, lastNameB, gap.claim, newConfA, newConfB, lastResult.resolutions);
-    const updated = await ollamaCall(url, model, 'You are a Bayesian epistemologist. Return only valid JSON with a single key "resolutions".', prompt);
+    const updated = await ollamaCall(url, model, 'You are a Bayesian epistemologist. Return only valid JSON with a single key "resolutions".', prompt, RESOLUTIONS_SCHEMA);
 
     if (updated.resolutions) {
       // patch into lastResult and re-render just the resolution section
@@ -678,6 +814,16 @@ function renderGraph(premiseChain, axioms, nameA, nameB) {
     g.append('text').attr('x',8).attr('y',l.y+4).attr('font-size',9).attr('fill','var(--text-muted)').attr('font-family','-apple-system,sans-serif').text(l.label);
     g.append('line').attr('x1',0).attr('x2',W).attr('y1',l.y-22).attr('y2',l.y-22).attr('stroke','var(--border)').attr('stroke-width',0.5);
   });
+
+  // nodes.length is always >=2 (the two axioms are pushed unconditionally above);
+  // if that's *all* there is, the model didn't return a usable premise chain —
+  // say so explicitly instead of leaving three empty bands of whitespace.
+  if (nodes.length <= 2) {
+    g.append('text').attr('x', W/2).attr('y', levelYs.intermediate)
+      .attr('text-anchor','middle').attr('font-size',12).attr('fill','var(--text-muted)')
+      .attr('font-family','-apple-system,sans-serif')
+      .text('Model returned axioms but no surface/intermediate/root premises — try re-running, or a larger model.');
+  }
 }
 
 // ── Render all ────────────────────────────────────────────────────────────────
@@ -746,10 +892,16 @@ function renderGraphCard(premiseChain, axioms, nameA, nameB) {
 }
 
 function renderPremiseChain(chain, nameA, nameB) {
-  if (!chain) return '';
+  if (!chain) chain = { personA: [], personB: [] };
+  const totalItems = (chain.personA||[]).length + (chain.personB||[]).length;
   const levels = ['surface','intermediate','root'];
   const levelLabels = {surface:'Surface claims — what they said',intermediate:'Intermediate premises — assumed',root:'Root premises — derived from axiom'};
   let html = `<div class="chain-card"><div class="chain-header"><div class="chain-dot" style="background:var(--amber-600)"></div><span class="chain-title">Premise chain — detail view</span><span class="chain-sub">surface → root</span></div><div class="chain-body">`;
+  if (totalItems === 0) {
+    html += `<div style="padding:14px 18px;font-size:13px;color:var(--text-muted)">The model didn't return a premise breakdown for this analysis. This happens occasionally with smaller or local models on this multi-step prompt — try re-running, or switch to a more capable model.</div>`;
+    html += `</div></div>`;
+    return html;
+  }
   levels.forEach((lvl,li)=>{
     const premA=(chain.personA||[]).filter(p=>p.level===lvl);
     const premB=(chain.personB||[]).filter(p=>p.level===lvl);
